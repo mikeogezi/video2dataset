@@ -2,11 +2,11 @@
 import os
 import uuid
 import requests
+from requests.adapters import HTTPAdapter, Retry
 import yt_dlp
 import io
 import webvtt
 import ffmpeg
-
 
 def video2audio(video, audio_format, tmp_dir):
     """extract audio from video"""
@@ -122,17 +122,21 @@ def get_file_info(url):
 class WebFileDownloader:
     """Downloader class for mp4 links"""
 
-    def __init__(self, timeout, tmp_dir, encode_formats):
+    def __init__(self, timeout, tmp_dir, encode_formats, session=None):
         self.timeout = timeout
         self.tmp_dir = tmp_dir
         self.encode_formats = encode_formats
+        if session is None:
+            self.session = requests
+        else:
+            self.session = session
 
     def __call__(self, url):
         modality_paths = {}
 
         ext, modality = get_file_info(url)
         if not os.path.isfile(url):
-            resp = requests.get(url, stream=True, timeout=self.timeout)
+            resp = self.session.get(url, stream=True, timeout=self.timeout)
             byts = resp.content
         else:  # local files (don't want to delete)
             with open(url, "rb") as f:
@@ -251,7 +255,14 @@ class VideoDataReader:
     """Video data reader provide data for a video"""
 
     def __init__(self, encode_formats, tmp_dir, reading_config):
-        self.webfile_downloader = WebFileDownloader(reading_config["timeout"], tmp_dir, encode_formats)
+        if "max_retries" not in reading_config:
+            self.session = None
+        else:
+            self.session = requests.Session()
+            retries = Retry(total=reading_config["max_retries"], backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+            self.session.mount("https://", HTTPAdapter(max_retries=retries))
+            self.session.mount("http://", HTTPAdapter(max_retries=retries))
+        self.webfile_downloader = WebFileDownloader(reading_config["timeout"], tmp_dir, encode_formats, self.session)
         self.yt_downloader = YtDlpDownloader(reading_config["yt_args"], tmp_dir, encode_formats)
 
     def __call__(self, row):
