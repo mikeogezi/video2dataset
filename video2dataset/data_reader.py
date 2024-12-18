@@ -259,7 +259,7 @@ class VideoDataReader:
             self.session = None
         else:
             self.session = requests.Session()
-            retries = Retry(total=reading_config["max_retries"], backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+            retries = Retry(total=reading_config["max_retries"], backoff_factor=reading_config.get("backoff_factor", 0.1), status_forcelist=[500, 502, 503, 504])
             self.session.mount("https://", HTTPAdapter(max_retries=retries))
             self.session.mount("http://", HTTPAdapter(max_retries=retries))
         self.webfile_downloader = WebFileDownloader(reading_config["timeout"], tmp_dir, encode_formats, self.session)
